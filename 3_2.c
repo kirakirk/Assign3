@@ -52,7 +52,7 @@ void readSuperBlockInfo(FILE *diskImage)
 
 	printf("FAT information: i = %d\n", i);
 
-	//fread()
+	
 
 }
 
