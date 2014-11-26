@@ -9,6 +9,12 @@ Submitted by: Kira Kirk - V00705087
 #include <stdio.h>
 #include <stdlib.h>
 #include <netinet/in.h>
+#include <stdint.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <limits.h>
+#include <assert.h>
+#include <time.h>
 
 unsigned int rootStart, rootBlocks, blockSize;
 
@@ -20,6 +26,8 @@ void readSuperBlockInfo(FILE *diskImage)
 	int alloBlocks = 0;
 	int i;
 	//unsigned ints are 4 bytes
+	//short is 2 bytes
+	//long is 4 bytes
 
 	fseek(diskImage, 8, SEEK_SET);
 
@@ -88,27 +96,50 @@ void readSuperBlockInfo(FILE *diskImage)
 
 void readDirectory(FILE *diskImage)
 {
-	unsigned int status, dStartBlock, numBlocks, fileSize, tempFN;
-	double createTime, modifyTime, unusedSpace;
+	unsigned int dStartBlock, numBlocks, fileSize, tempFN, modYear;
+	double createTime, unusedSpace;
 	typedef unsigned char BYTE;
 	BYTE fileName [31];
-	int i;
+	int i, statusRead;
+	unsigned short modMonth, modDay, modHour, modMinute, modSecond;
+	char status = 'x';
 
 	//move file pointer to the start of the root directory
 	fseek(diskImage, (rootStart*blockSize), SEEK_SET);
 
 	printf("\nRoot directory information:\n");
     
-    fread(&status, 1, 1, diskImage);
-    status = ntohs(status);
-	printf("Status: %d\n", status);
+    fread(&statusRead, 1, 1, diskImage);
+    statusRead = ntohs(statusRead);
+    if((statusRead & 0x0) == 0)	//bit 0 is set to 0, this directory entry is available
+    {
+    	status = 'a';
+    }
+    else if ((statusRead & 0x0) == 1)	//bit 0 is set to 1, this directory entry is in use
+	{
+		status = 'u';
+	}
+	if ((statusRead & 0x1) == 1)	//bit 1 is set to 1, this entry is a normal file
+	{
+		status = 'F';
+	}
+	if ((statusRead & 0x2) == 1)	//bit 2 is set to 1, this entry is a directory
+	{
+		status = 'D';
+	}
+	if ((statusRead & 0x2) == 1 && (statusRead & 0x1) == 1)	//this can't happen according to the specs
+	{
+		printf("Error in Status bit of directory block\n");
+	}
+	
+	printf("Status: %c\n", status);
 
 	fread(&dStartBlock, 4, 1, diskImage);
     dStartBlock = ntohl(dStartBlock);
 	printf("Starting Block: %d\n", dStartBlock);
 
 	fread(&numBlocks, 4, 1, diskImage);
-    numBlocks = ntohs(numBlocks);
+    numBlocks = ntohl(numBlocks);
 	printf("Number of Blocks: %d\n", numBlocks);
 
 	fread(&fileSize, 4, 1, diskImage);
@@ -116,12 +147,30 @@ void readDirectory(FILE *diskImage)
 	printf("File Size: %d\n", fileSize);
 
 	fread(&createTime, 7, 1, diskImage);
-    createTime = ntohs(createTime);
+    createTime = ntohl(createTime);
 	printf("Create Time: %f\n", createTime);
 
-	fread(&modifyTime, 7, 1, diskImage);
-    modifyTime = ntohl(modifyTime);
-	printf("Modify Time: %f\n", modifyTime);
+	fread(&modYear, 2, 1, diskImage);
+    modYear = ntohs(modYear);
+    printf("Year: %d\n", modYear);
+    
+    fread(&modMonth, 1, 1, diskImage);
+    modMonth = ntohs(modMonth);
+    printf("Month: %x\n", modMonth);
+    
+    fread(&modDay, 1, 1, diskImage);
+    modDay = ntohs(modDay);
+    
+    fread(&modHour, 1, 1, diskImage);
+    modHour = ntohs(modHour);
+    
+    fread(&modMinute, 1, 1, diskImage);
+    modMinute = ntohs(modMinute);
+    
+    fread(&modSecond, 1, 1, diskImage);
+    modSecond = ntohs(modSecond);
+	
+	printf("Modify Time: %04x/%04x/%04x %02x:%02x:%02x\n", modYear, modMonth, modDay, modHour, modMinute, modSecond);
 
 	printf("File Name: ");
 	for (i = 0; i < 31; i++)
@@ -141,6 +190,7 @@ void readDirectory(FILE *diskImage)
 
 int main (int argc, char *argv[])
 {
+	
 	FILE *diskImage;
 	
 	diskImage = fopen(argv[1], "rb");	//read the file
@@ -151,11 +201,21 @@ int main (int argc, char *argv[])
 		return(-1);
 	}
 
+#if defined(PART1)
+	printf ("Part 1: diskinfo\n");
 	readSuperBlockInfo(diskImage);
-
+#elif defined(PART2)
+	printf ("Part 2: disklist\n");
 	readDirectory(diskImage);
-
+#elif defined(PART3)
+	printf ("Part 3: diskget\n");
+#elif defined(PART4)
+	printf ("Part 4: diskput\n");
+#else
+#	error "PART[1234] must be defined"
+#endif
 	fclose(diskImage);
+	return 0;
 }
 
 
