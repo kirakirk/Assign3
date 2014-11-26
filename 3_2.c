@@ -2,7 +2,7 @@
 Assignment #3
 Course: CSC 360 - Operating Systems
 Date: December 1, 2014
-Description: A Simple File System
+Description: A Simple File System - Part I
 Submitted by: Kira Kirk - V00705087
 */
 
@@ -10,9 +10,11 @@ Submitted by: Kira Kirk - V00705087
 #include <stdlib.h>
 #include <netinet/in.h>
 
+unsigned int rootStart, rootBlocks, blockSize;
+
 void readSuperBlockInfo(FILE *diskImage)
 {
-	unsigned int blockSize, fileSystemSize, FATstart, FATblocks, rootStart, rootBlocks, temp;
+	unsigned int fileSystemSize, FATstart, FATblocks, temp;
 	int freeBlocks = 0;
 	int resBlocks = 0;
 	int alloBlocks = 0;
@@ -84,6 +86,58 @@ void readSuperBlockInfo(FILE *diskImage)
 	printf("Allocated Blocks: %d\n", alloBlocks);
 }
 
+void readDirectory(FILE *diskImage)
+{
+	unsigned int status, dStartBlock, numBlocks, fileSize, tempFN;
+	double createTime, modifyTime, unusedSpace;
+	typedef unsigned char BYTE;
+	BYTE fileName [31];
+	int i;
+
+	//move file pointer to the start of the root directory
+	fseek(diskImage, (rootStart*blockSize), SEEK_SET);
+
+	printf("\nRoot directory information:\n");
+    
+    fread(&status, 1, 1, diskImage);
+    status = ntohs(status);
+	printf("Status: %d\n", status);
+
+	fread(&dStartBlock, 4, 1, diskImage);
+    dStartBlock = ntohl(dStartBlock);
+	printf("Starting Block: %d\n", dStartBlock);
+
+	fread(&numBlocks, 4, 1, diskImage);
+    numBlocks = ntohs(numBlocks);
+	printf("Number of Blocks: %d\n", numBlocks);
+
+	fread(&fileSize, 4, 1, diskImage);
+    fileSize = ntohl(fileSize);
+	printf("File Size: %d\n", fileSize);
+
+	fread(&createTime, 7, 1, diskImage);
+    createTime = ntohs(createTime);
+	printf("Create Time: %f\n", createTime);
+
+	fread(&modifyTime, 7, 1, diskImage);
+    modifyTime = ntohl(modifyTime);
+	printf("Modify Time: %f\n", modifyTime);
+
+	printf("File Name: ");
+	for (i = 0; i < 31; i++)
+	{
+		fread(&tempFN, 1, 1, diskImage);
+		tempFN = ntohs(tempFN);
+		fileName[i] = tempFN;
+		printf("%c", fileName[i]);
+	}
+	
+    printf("\n");
+	fread(&unusedSpace, 6, 1, diskImage);
+    unusedSpace = ntohl(unusedSpace);
+	printf("Unused: %f\n", unusedSpace);
+}
+
 
 int main (int argc, char *argv[])
 {
@@ -99,7 +153,7 @@ int main (int argc, char *argv[])
 
 	readSuperBlockInfo(diskImage);
 
-	//readFATInfo(diskImage);
+	readDirectory(diskImage);
 
 	fclose(diskImage);
 }
