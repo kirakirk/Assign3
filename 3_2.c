@@ -98,10 +98,10 @@ void readDirectory(FILE *diskImage)
 {
 	unsigned int dStartBlock, numBlocks, fileSize, tempFN, modYear;
 	double createTime, unusedSpace;
-	typedef unsigned char BYTE;
+	typedef uint8_t BYTE;
 	BYTE fileName [31];
-	int i, statusRead;
-	unsigned short modMonth, modDay, modHour, modMinute, modSecond;
+	int i;
+	unsigned char statusRead, modMonth, modDay, modHour, modMinute, modSecond;
 	char status = 'x';
 
 	//move file pointer to the start of the root directory
@@ -110,30 +110,56 @@ void readDirectory(FILE *diskImage)
 	printf("\nRoot directory information:\n");
     
     fread(&statusRead, 1, 1, diskImage);
-    statusRead = ntohs(statusRead);
-    if((statusRead & 0x0) == 0)	//bit 0 is set to 0, this directory entry is available
+    //statusRead = ntohs(statusRead);
+    printf("statusRead: %d\n", statusRead);
+
+    //do this with 1, 2, 4 and bit wise and (&)
+    //if its 1 then its in use so check 2 and 4
+    	
+   //unsigned char byte = 03;// Read from file
+	unsigned char bits[8];
+
+	 // Extract the bits
+	for (i = 0; i < 8; i++) 
+	{
+	    // Mask each bit in the byte and store it
+		bits[i] = (statusRead >> i) & 1;
+	}
+	 // For debug purposes, lets print the received data
+	for (i = 0; i < 8; i++) 
+	{
+		printf("Bit: %d\n",bits[i]);
+	}
+
+	if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
     {
     	status = 'a';
     }
-    else if ((statusRead & 0x0) == 1)	//bit 0 is set to 1, this directory entry is in use
+    else if (statusRead & 1)	//bit 0 is set to 1, this directory entry is in use
 	{
 		status = 'u';
+
+		//check the use
+		if (statusRead & 2)	//bit 1 is set to 1, this entry is a normal file
+		{
+			status = 'F';
+		}
+		else if (statusRead & 4)	//bit 2 is set to 1, this entry is a directory
+		{
+			status = 'D';
+		}
+		else
+		{
+			printf("Error in Status bit of directory block\n");
+		}
 	}
-	if ((statusRead & 0x1) == 1)	//bit 1 is set to 1, this entry is a normal file
-	{
-		status = 'F';
-	}
-	if ((statusRead & 0x2) == 1)	//bit 2 is set to 1, this entry is a directory
-	{
-		status = 'D';
-	}
-	if ((statusRead & 0x2) == 1 && (statusRead & 0x1) == 1)	//this can't happen according to the specs
+	else
 	{
 		printf("Error in Status bit of directory block\n");
 	}
 	
 	printf("Status: %c\n", status);
-
+	
 	fread(&dStartBlock, 4, 1, diskImage);
     dStartBlock = ntohl(dStartBlock);
 	printf("Starting Block: %d\n", dStartBlock);
@@ -154,10 +180,18 @@ void readDirectory(FILE *diskImage)
     modYear = ntohs(modYear);
     printf("Year: %d\n", modYear);
     
+    //check if this is less than 10, if so pad with %0d if not just use %d to print
     fread(&modMonth, 1, 1, diskImage);
     modMonth = ntohs(modMonth);
-    printf("Month: %x\n", modMonth);
-    
+    /*if (modMonth<10)
+    {
+    	printf("Month less: %0d\n", modMonth);
+    }
+    else
+    {
+    	printf("Month: %d\n", modMonth);
+    }
+    */
     fread(&modDay, 1, 1, diskImage);
     modDay = ntohs(modDay);
     
@@ -201,19 +235,19 @@ int main (int argc, char *argv[])
 		return(-1);
 	}
 
-#if defined(PART1)
+//#if defined(PART1)
 	printf ("Part 1: diskinfo\n");
 	readSuperBlockInfo(diskImage);
-#elif defined(PART2)
+//#elif defined(PART2)
 	printf ("Part 2: disklist\n");
 	readDirectory(diskImage);
-#elif defined(PART3)
+/*#elif defined(PART3)
 	printf ("Part 3: diskget\n");
 #elif defined(PART4)
 	printf ("Part 4: diskput\n");
 #else
 #	error "PART[1234] must be defined"
-#endif
+#endif*/
 	fclose(diskImage);
 	return 0;
 }
