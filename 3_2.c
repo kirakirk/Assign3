@@ -111,25 +111,7 @@ void readDirectory(FILE *diskImage)
     
     fread(&statusRead, 1, 1, diskImage);
     //statusRead = ntohs(statusRead);
-    printf("statusRead: %d\n", statusRead);
-
-    //do this with 1, 2, 4 and bit wise and (&)
-    //if its 1 then its in use so check 2 and 4
-    	
-   //unsigned char byte = 03;// Read from file
-	unsigned char bits[8];
-
-	 // Extract the bits
-	for (i = 0; i < 8; i++) 
-	{
-	    // Mask each bit in the byte and store it
-		bits[i] = (statusRead >> i) & 1;
-	}
-	 // For debug purposes, lets print the received data
-	for (i = 0; i < 8; i++) 
-	{
-		printf("Bit: %d\n",bits[i]);
-	}
+    //printf("statusRead: %d\n", statusRead);
 
 	if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
     {
