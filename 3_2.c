@@ -98,10 +98,8 @@ void readDirectory(FILE *diskImage)
 {
 	unsigned int dStartBlock, numBlocks, fileSize, tempFN, modYear;
 	double createTime, unusedSpace;
-	//typedef uint8_t BYTE;
-	//BYTE fileName [32];
 	char fileName[31];
-	int i;
+	int i, k;
 	unsigned char statusRead, modMonth, modDay, modHour, modMinute, modSecond;
 	char status = 'x';
 
@@ -110,104 +108,74 @@ void readDirectory(FILE *diskImage)
 
 	printf("\nRoot directory information:\n");
     
-    fread(&statusRead, 1, 1, diskImage);
-    //statusRead = ntohs(statusRead);
-    //printf("statusRead: %d\n", statusRead);
-
-	if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
+    for (k = 0; k < rootBlocks; k++)
     {
-    	status = 'a';
-    }
-    else if (statusRead & 1)	//bit 0 is set to 1, this directory entry is in use
-	{
-		status = 'u';
+	    fread(&statusRead, 1, 1, diskImage);
 
-		//check the use
-		if (statusRead & 2)	//bit 1 is set to 1, this entry is a normal file
+		if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
+	    {
+	    	status = 'a';
+	    }
+	    else if (statusRead & 1)	//bit 0 is set to 1, this directory entry is in use
 		{
-			status = 'F';
-		}
-		else if (statusRead & 4)	//bit 2 is set to 1, this entry is a directory
-		{
-			status = 'D';
+			//check the use
+			if (statusRead & 2)	//bit 1 is set to 1, this entry is a normal file
+			{
+				status = 'F';
+			}
+			else if (statusRead & 4)	//bit 2 is set to 1, this entry is a directory
+			{
+				status = 'D';
+			}
+			else
+			{
+				printf("Error in Status bit of directory block\n");
+			}
 		}
 		else
 		{
 			printf("Error in Status bit of directory block\n");
 		}
-	}
-	else
-	{
-		printf("Error in Status bit of directory block\n");
-	}
-	
-	printf("Status: %c\n", status);
-	
-	fread(&dStartBlock, 4, 1, diskImage);
-    dStartBlock = ntohl(dStartBlock);
-	printf("Starting Block: %d\n", dStartBlock);
-
-	fread(&numBlocks, 4, 1, diskImage);
-    numBlocks = ntohl(numBlocks);
-	printf("Number of Blocks: %d\n", numBlocks);
-
-	fread(&fileSize, 4, 1, diskImage);
-    fileSize = ntohl(fileSize);
-	printf("File Size: %d\n", fileSize);
-
-	fread(&createTime, 7, 1, diskImage);
-    createTime = ntohl(createTime);
-	printf("Create Time: %f\n", createTime);
-
-	fread(&modYear, 2, 1, diskImage);
-    modYear = ntohs(modYear);
-    
-    //check if this is less than 10, if so pad with %0d if not just use %d to print
-    fread(&modMonth, 1, 1, diskImage);
-   /* modMonth = ntohs(modMonth);
-    if (modMonth<10)
-    {
-    	printf("Month less: %d\n", modMonth);
-    }
-    else
-    {
-    	printf("Month: %d\n", modMonth);
-    }*/
-
-    fread(&modDay, 1, 1, diskImage);
-    //modDay = ntohs(modDay);
-    
-    fread(&modHour, 1, 1, diskImage);
-    //modHour = ntohs(modHour);
-    
-    fread(&modMinute, 1, 1, diskImage);
-    //modMinute = ntohs(modMinute);
-    
-    fread(&modSecond, 1, 1, diskImage);
-    //modSecond = ntohs(modSecond);
-	
-	
-
-	//printf("File Name: \n");
-	
-	for (i = 0; i < 31; i++)
-	{
-		fread(&tempFN, 1, 1, diskImage);
-		//tempFN = ntohs(tempFN);
-		fileName[i] = tempFN;
-		//printf("%c", fileName[i]);
 		
+		fread(&dStartBlock, 4, 1, diskImage);
+	    dStartBlock = ntohl(dStartBlock);
+
+		fread(&numBlocks, 4, 1, diskImage);
+	    numBlocks = ntohl(numBlocks);
+
+		fread(&fileSize, 4, 1, diskImage);
+	    fileSize = ntohl(fileSize);
+
+		fread(&createTime, 7, 1, diskImage);
+	    createTime = ntohl(createTime);
+
+		fread(&modYear, 2, 1, diskImage);
+	    modYear = ntohs(modYear);
+	    
+	    //check if this is less than 10, if so pad with %0d if not just use %d to print
+	    fread(&modMonth, 1, 1, diskImage);
+
+	    fread(&modDay, 1, 1, diskImage);
+	    
+	    fread(&modHour, 1, 1, diskImage);
+	    
+	    fread(&modMinute, 1, 1, diskImage);
+	    
+	    fread(&modSecond, 1, 1, diskImage);
+
+		for (i = 0; i < 31; i++)
+		{
+			fread(&tempFN, 1, 1, diskImage);
+			fileName[i] = tempFN;
+		}
+		fread(&unusedSpace, 6, 1, diskImage);
+	    
+	    if (!(status == 'a' || status == 'x'))
+	    {
+	    	printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
+	    }
+	    
 	}
-	//printf(" %04d/%02d/%02d %02d:%02d:%02d\n", modYear, modMonth, modDay, modHour, modMinute, modSecond);
-	//fileNamePrintable[i] = '\0';
-	//printf("\nfileNamePrintable: %s", fileNamePrintable);
-    //printf("\n");
-	fread(&unusedSpace, 6, 1, diskImage);
-    printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
-    //char array[31] = "Hello World";
-    //printf("array: %s\n", array);
-    //unusedSpace = ntohl(unusedSpace);
-	//printf("Unused: %f\n", unusedSpace);
 }
 
 
