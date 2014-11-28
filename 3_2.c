@@ -98,8 +98,9 @@ void readDirectory(FILE *diskImage)
 {
 	unsigned int dStartBlock, numBlocks, fileSize, tempFN, modYear;
 	double createTime, unusedSpace;
-	typedef uint8_t BYTE;
-	BYTE fileName [31];
+	//typedef uint8_t BYTE;
+	//BYTE fileName [32];
+	char fileName[31];
 	int i;
 	unsigned char statusRead, modMonth, modDay, modHour, modMinute, modSecond;
 	char status = 'x';
@@ -160,47 +161,53 @@ void readDirectory(FILE *diskImage)
 
 	fread(&modYear, 2, 1, diskImage);
     modYear = ntohs(modYear);
-    printf("Year: %d\n", modYear);
     
     //check if this is less than 10, if so pad with %0d if not just use %d to print
     fread(&modMonth, 1, 1, diskImage);
-    modMonth = ntohs(modMonth);
-    /*if (modMonth<10)
+   /* modMonth = ntohs(modMonth);
+    if (modMonth<10)
     {
-    	printf("Month less: %0d\n", modMonth);
+    	printf("Month less: %d\n", modMonth);
     }
     else
     {
     	printf("Month: %d\n", modMonth);
-    }
-    */
+    }*/
+
     fread(&modDay, 1, 1, diskImage);
-    modDay = ntohs(modDay);
+    //modDay = ntohs(modDay);
     
     fread(&modHour, 1, 1, diskImage);
-    modHour = ntohs(modHour);
+    //modHour = ntohs(modHour);
     
     fread(&modMinute, 1, 1, diskImage);
-    modMinute = ntohs(modMinute);
+    //modMinute = ntohs(modMinute);
     
     fread(&modSecond, 1, 1, diskImage);
-    modSecond = ntohs(modSecond);
+    //modSecond = ntohs(modSecond);
 	
-	printf("Modify Time: %04x/%04x/%04x %02x:%02x:%02x\n", modYear, modMonth, modDay, modHour, modMinute, modSecond);
+	
 
-	printf("File Name: ");
+	//printf("File Name: \n");
+	
 	for (i = 0; i < 31; i++)
 	{
 		fread(&tempFN, 1, 1, diskImage);
-		tempFN = ntohs(tempFN);
+		//tempFN = ntohs(tempFN);
 		fileName[i] = tempFN;
-		printf("%c", fileName[i]);
+		//printf("%c", fileName[i]);
+		
 	}
-	
-    printf("\n");
+	//printf(" %04d/%02d/%02d %02d:%02d:%02d\n", modYear, modMonth, modDay, modHour, modMinute, modSecond);
+	//fileNamePrintable[i] = '\0';
+	//printf("\nfileNamePrintable: %s", fileNamePrintable);
+    //printf("\n");
 	fread(&unusedSpace, 6, 1, diskImage);
-    unusedSpace = ntohl(unusedSpace);
-	printf("Unused: %f\n", unusedSpace);
+    printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
+    //char array[31] = "Hello World";
+    //printf("array: %s\n", array);
+    //unusedSpace = ntohl(unusedSpace);
+	//printf("Unused: %f\n", unusedSpace);
 }
 
 
