@@ -29,7 +29,6 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 	int blockSize = SBI[0];
 	
 	while(allDirEntry[i][3] != 5 && allDirEntry[i] != NULL){
-		//printf("allDirEntry at [%d][3] = %d \n", i, allDirEntry[i][3]);
 		i++;
 	}
 	
@@ -37,7 +36,6 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 	{
 		int numBlocks = allDirEntry[i][1];	//the number of blocks in the file
 		int fileSize = allDirEntry[i][2];
-		printf("numBlocks = %d, fileSize = %d\n", numBlocks, fileSize);
 		unsigned char toReadWrite[fileSize];
 		int bytesLeft = fileSize;
 		unsigned int readSequence [numBlocks];
@@ -46,25 +44,12 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 		
 		while(readSequence[o] != 0xFFFFFFFF && bytesLeft > 0)
 		{
-			/*if(readSequence[o] == 0x00000000 || readSequence[o] == 0x00000001){
-				printf("Error Reading FAT Block in Part 3: Block should be part allocated to a file but instead is available or reserved\n");
-				return;
-			}*/
-			
 			fseek(diskImage, SBI[2]*blockSize + readSequence[o]*4, SEEK_SET);
 			o++;
 			fread(&readSequence[o], 4, 1, diskImage);
 			readSequence[o] = ntohl(readSequence[o]);
 			bytesLeft--;
-			
 		}
-
-		/*for (int i = 0; i < numBlocks; ++i)
-		{
-			printf("readSequence[%d] = %d\n", i, readSequence[i]);
-		}
-
-		printf("dStartBlock = %x\n", dStartBlock*blockSize);*/
 
 		for (i = 0; i<numBlocks; i++)
 		{
@@ -260,7 +245,6 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 		fread(&modYear, 2, 1, diskImage);
 	    modYear = ntohs(modYear);
 	    
-	    //check if this is less than 10, if so pad with %0d if not just use %d to print
 	    fread(&modMonth, 1, 1, diskImage);
 
 	    fread(&modDay, 1, 1, diskImage);
@@ -275,7 +259,6 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 		{
 			fread(&tempFN, 1, 1, diskImage);
 			fileName[i] = tempFN;
-			//printf("%c", fileName[i]);
 		}
 		
 		fread(&unusedSpace, 6, 1, diskImage);		
@@ -378,7 +361,6 @@ int main (int argc, char *argv[])
 #	error "PART[1234] must be defined"
 #endif
 	fclose(diskImage);
-	
 	
 	//free(SBI);	gives an error...
 	free(allDirEntry);
