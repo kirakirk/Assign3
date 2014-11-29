@@ -24,74 +24,63 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 	//fwrite the info from toREadWrite to the file in the root directory specified by copyFile
 	size_t n, m;
 	int i = 0;
-	int blockSize = SBI[0];
-
-	//int FATstart = SBI[2];
-	unsigned char toReadWrite[blockSize];	//temp array to store bytes read from .img
-	//unsigned int nextBlock, fNextBlock;	
-	unsigned int dStartBlock = allDirEntry[i][0];
-	//unsigned int fileSize = allDirEntry[i][2];
+	int o = 0;
 	
-	//while (allDirEntry[i] != NULL)
-	//{
-		//printf("dStartBlock = %d\n", dStartBlock);
-		fseek(diskImage, dStartBlock*blockSize, SEEK_SET);	//move to the first block in the file
+	int blockSize = SBI[0];
+	
+	while(allDirEntry[i][3] != 5 && allDirEntry[i] != NULL){
+		//printf("allDirEntry at [%d][3] = %d \n", i, allDirEntry[i][3]);
+		i++;
+	}
+	
+	if (allDirEntry[i][3] == 5)	//this is the file to print out
+	{
+		int numBlocks = allDirEntry[i][1];	//the number of blocks in the file
+		int fileSize = allDirEntry[i][2];
+		printf("numBlocks = %d, fileSize = %d\n", numBlocks, fileSize);
+		unsigned char toReadWrite[fileSize];
+		int bytesLeft = fileSize;
+		unsigned int readSequence [numBlocks];
+		unsigned int dStartBlock = allDirEntry[i][0];
+		readSequence[o] = dStartBlock;
 		
-
-		n = fread(toReadWrite, 1, blockSize, diskImage);	//read the first block of the file
-		if(n != 0)
+		while(readSequence[o] != 0xFFFFFFFF && bytesLeft > 0)
 		{
-			m = fwrite(toReadWrite, 1, n, copyFile);	//write the first block to the specified file
+			/*if(readSequence[o] == 0x00000000 || readSequence[o] == 0x00000001){
+				printf("Error Reading FAT Block in Part 3: Block should be part allocated to a file but instead is available or reserved\n");
+				return;
+			}*/
+			
+			fseek(diskImage, SBI[2]*blockSize + readSequence[o]*4, SEEK_SET);
+			o++;
+			fread(&readSequence[o], 4, 1, diskImage);
+			readSequence[o] = ntohl(readSequence[o]);
+			bytesLeft--;
+			
 		}
-		else
+
+		/*for (int i = 0; i < numBlocks; ++i)
 		{
-			m = 0;
+			printf("readSequence[%d] = %d\n", i, readSequence[i]);
 		}
-		
-		//while ((fat_entry_value != 0xFFFFFFFF) && (bytes_left_to_read > 0)) {keep reading} 
 
-		
+		printf("dStartBlock = %x\n", dStartBlock*blockSize);*/
 
-		/*nextBlock = dStartBlock;	//next block from FAT, each FAT entry is 4 bytes, initally set to the first block to read so the while loop must go through once
-		fNextBlock = dStartBlock;	//the next block in the file to read, intitally set to the first block to read
-		while (nextBlock != 0xFFFFFFFF)
+		for (i = 0; i<numBlocks; i++)
 		{
-			if (nextBlock == 0x00000000)	//this block is available
+			fseek(diskImage, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
+			n = fread(toReadWrite, 1, blockSize, diskImage);	//read the next block of the file
+			
+			if(n != 0)
 			{
-				printf("Error Reading FAT Block in Part 3: Block should be part allocated to a file but instead is available\n");
-			}
-			else if(nextBlock == 0x00000001)	//this block is reserved
-			{
-				printf("Error Reading FAT Block in Part 3: Block should be part allocated to a file but instead is reserved\n");
-			}
-			else if ((nextBlock >= 0x00000002 && nextBlock <= 0xFFFFFF00) || nextBlock == -1)	//this block is allocated as part of a file
-			{
-				fNextBlock = nextBlock;
-			}
-			else if (nextBlock == 0xFFFFFFFF)	//this is the last block in a file and therefore allocated to the file
-			{
-				fNextBlock = nextBlock;
+				m = fwrite(toReadWrite, 1, n, copyFile);	//write the next block to the specified file
 			}
 			else
 			{
-				printf("Error Reading FAT in Part 3: FAT entry is invalid\n");
+				m = 0;
 			}
-			
-			//move file pointer to the next block in the file to read
-			fseek(diskImage, (fNextBlock*blockSize), SEEK_SET);
-			//read the block 
-			//might have to ntohl the read and write
-			fread(&toReadWrite, 1, blockSize, diskImage);
-			//write the block to the file
-			fwrite(&toReadWrite, 1, blockSize, copyFile);
-			//check FAT at current block of file
-			fseek(diskImage, (FATstart*blockSize) + fNextBlock, SEEK_SET);
-			//look at that block in the FAT to find the next block in the file
-			fread(&nextBlock, 4, 1, diskImage);
-			nextBlock = ntohl(nextBlock);
-		} //end inner while
-		i++;
-	} //end outer while*/
+		}
+	}
 	
 } //end function
 
@@ -214,7 +203,8 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 	unsigned int numBlocks, fileSize, tempFN, modYear, dStartBlock;
 	double createTime, unusedSpace;
 	char fileName[31];
-	int i, g, l;
+	int i, g;
+	int l = 9;
 	int k = 0;
 	unsigned char statusRead, modMonth, modDay, modHour, modMinute, modSecond;
 	char status = 'x';
@@ -300,12 +290,15 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 			printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
 	    }
 
-	    l = memcmp(fileName, name, strlen(fileName));
+	    if(name != NULL)
+	    {
+	    	l = memcmp(fileName, name, strlen(fileName));
+	    }
 
 	    if (l == 0)
 	    {
 	    	flag = 2;
-	    	allDirEntry[k][3] = 5;	//set a flag to show this is the file to use in diskget
+	    	allDirEntry[k-1][3] = 5;	//set a flag to show this is the file to use in diskget
 	    }
 	    
 	}
@@ -319,6 +312,7 @@ int main (int argc, char *argv[])
 	FILE *diskImage;
 	
 	int *SBI = calloc(9, sizeof(int));	//pointer to the start of the array storing the superblockinfo
+	
 	char *name = argv[2];
 
 	diskImage = fopen(argv[1], "rb");	//read the file
@@ -347,14 +341,14 @@ int main (int argc, char *argv[])
 #elif defined(PART2)
 	flag = 1;
 	printf ("Part 2: disklist\n");
-
+	
 	//reads and prints directory information if flag is set
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
 	
 #elif defined(PART3)
 	FILE *copyFile;
 	flag = 0;
-
+	
 	printf ("Part 3: diskget\n");
 	
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
