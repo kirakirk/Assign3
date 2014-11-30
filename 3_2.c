@@ -18,13 +18,62 @@ Submitted by: Kira Kirk - V00705087
 
 int flag;	//flag = 1 if part2 defined, flag = 2 if filename is valid in part3
 
+void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI)
+{
+	long int fileSize;
+	int numBlocks;
+	int blockSize = SBI[0];
+	unsigned char statusRead = 0;
+	int i = 0;
+	int k = SBI[5]; //k = number of blocks in the root directory
+
+	fseek(copyFile, 0, SEEK_END);	//seek to the end of the file
+	fileSize = ftell(copyFile);	 //figure out the size of the file in bytes
+
+	numBlocks = fileSize/512;	//file size in blocks
+
+	if(numBlocks > SBI[6])	//check if the number of blocks in the file is bigger than the number of free blocks in the file system
+	{
+		printf("Error: There Are Not Enough Free Blocks In The File System To Write That File\n");
+	}
+
+	//find the first available entry in root directory 
+printf("k = %d, SBI[4] = %d, i = %d\n", k, SBI[4], i);
+		//bit 0 is set to 1, this directory entry is in use or we made it to the end of the root directory
+    do
+    {
+    	fseek(diskImage, SBI[4]*blockSize+(64*i), SEEK_SET);
+    	fread(&statusRead, 1, 1, diskImage);
+    	printf("in while, statusRead = %d\n", statusRead);
+    	i++;
+    	k--;
+    }while((statusRead & 1) && (k>0));
+    
+printf("statusRead = %d\n", statusRead);
+	
+
+
+	/*fseek(copyFile, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
+	n = fread(toReadWrite, 1, blockSize, diskImage);	//read the next block of the file
+	
+	if(n != 0)
+	{
+		m = fwrite(toReadWrite, 1, n, copyFile);	//write the next block to the specified file
+	}
+	else
+	{
+		m = 0;
+	}*/
+}
+
+
 void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 {
 	//fread the file from the .img into toReadWrite
 	//fwrite the info from toREadWrite to the file in the root directory specified by copyFile
 	size_t n, m;
 	int i = 0;
-	int o = 0;
+	
 	
 	int blockSize = SBI[0];
 	
@@ -32,17 +81,20 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 		i++;
 	}
 	
+	int o = 0;
 	if (allDirEntry[i][3] == 5)	//this is the file to print out
 	{
 		int numBlocks = allDirEntry[i][1];	//the number of blocks in the file
-		int fileSize = allDirEntry[i][2];
-		unsigned char toReadWrite[fileSize];
-		int bytesLeft = fileSize;
-		unsigned int readSequence [numBlocks];
+		int fileSize = allDirEntry[i][2];	//size of the file in bytes
+		unsigned char toReadWrite[fileSize];	//temp variable to hold bytes as they're read, before they're written
+		int bytesLeft = fileSize;	//to keep track of the bytes left to read in the file
+		unsigned int readSequence [numBlocks];	//to store the sequence of blocks in the file system that the file is stored in, this is read from the FAT
 		unsigned int dStartBlock = allDirEntry[i][0];
 		readSequence[o] = dStartBlock;
 		
-		while(readSequence[o] != 0xFFFFFFFF && bytesLeft > 0)
+		//o constraint may break this, needs to be tested
+		//read the block sequence from the FAT into an array
+		while(readSequence[o] != 0xFFFFFFFF && bytesLeft > 0 && o < numBlocks-1)
 		{
 			fseek(diskImage, SBI[2]*blockSize + readSequence[o]*4, SEEK_SET);
 			o++;
@@ -204,6 +256,8 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 	   
 	    fread(&statusRead, 1, 1, diskImage);
 
+	    //printf("in readDirectory, statusRead = %d\n", statusRead);
+
 		if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
 	    {
 			status = 'a';
@@ -293,7 +347,8 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 int main (int argc, char *argv[])
 {
 	FILE *diskImage;
-	
+	FILE *copyFile;
+
 	int *SBI = calloc(9, sizeof(int));	//pointer to the start of the array storing the superblockinfo
 	
 	char *name = argv[2];
@@ -318,18 +373,19 @@ int main (int argc, char *argv[])
 
 #if defined(PART1)
 	name = NULL;
+	copyFile = NULL;
 	printf ("\nPart 1: diskinfo\n");
 	printSuperBlockInfo(SBI);
 
 #elif defined(PART2)
 	flag = 1;
+	copyFile = NULL;
 	printf ("Part 2: disklist\n");
 	
 	//reads and prints directory information if flag is set
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
 	
 #elif defined(PART3)
-	FILE *copyFile;
 	flag = 0;
 	
 	printf ("Part 3: diskget\n");
@@ -354,9 +410,20 @@ int main (int argc, char *argv[])
 	fclose(copyFile);
 
 #elif defined(PART4)
-
 	name = NULL;
+
 	printf ("Part 4: diskput\n");
+
+	copyFile = fopen(argv[2], "r+b");
+
+	if (copyFile == NULL)
+	{
+		printf("File not found\n");
+		return(-1);
+	}
+
+	writeThatFile(diskImage, copyFile, SBI);
+	fclose(copyFile);
 #else
 #	error "PART[1234] must be defined"
 #endif
