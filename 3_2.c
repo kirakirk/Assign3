@@ -18,52 +18,190 @@ Submitted by: Kira Kirk - V00705087
 
 int flag;	//flag = 1 if part2 defined, flag = 2 if filename is valid in part3
 
-void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI)
+void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 {
-	long int fileSize;
-	int numBlocks;
+	
+	time_t createTime, modTime;
+	struct tm *info;
+	double unusedSpace = 0xFF;
+	unsigned int fileSize, numBlocks, temp, numBlocks2, cYear, modYear; 
+	unsigned int blockNumber = 0;
+	unsigned int FATblocks = SBI[3];	//number of blocks in the FAT
+	unsigned int EOFBlock = 0xFFFFFFFF;
+	int FATblocksLeft = FATblocks*128;
 	int blockSize = SBI[0];
-	unsigned char statusRead = 0;
 	int i = 0;
 	int k = SBI[5]; //k = number of blocks in the root directory
+	int j = 0;	//to loop through readsequence array
+	//unsigned char toReadWrite[blockSize];
+	unsigned char statusRead = 0;
+	unsigned char status = 3;	//we won't be working with directories, so every status will be 11000000
+	char cMonth, cDay, cHour, cMin, cSec, modMonth, modDay, modHour, modMin, modSec;
+	size_t m;	//n
 
 	fseek(copyFile, 0, SEEK_END);	//seek to the end of the file
 	fileSize = ftell(copyFile);	 //figure out the size of the file in bytes
 
+	printf("fileSize = %d\n", fileSize);
+	
 	numBlocks = fileSize/512;	//file size in blocks
-
+	numBlocks2 = numBlocks;	//to count down the number of blocks in the file
+	
+	unsigned int readSequence [numBlocks];	//an array to hold the sequence in the FAT
+	
 	if(numBlocks > SBI[6])	//check if the number of blocks in the file is bigger than the number of free blocks in the file system
 	{
 		printf("Error: There Are Not Enough Free Blocks In The File System To Write That File\n");
 	}
 
+//add the blocks of the file to the FAT
+	//move file pointer to the start of the FAT to find first available block
+	fseek(diskImage, (SBI[2]*blockSize), SEEK_SET);
+
+//printf("SBI[2] = %d, blockSize = %d\n", SBI[2], blockSize);
+	
+	
+	while (numBlocks2 > 0 && FATblocksLeft > 0)//we still have blocks in the file left to write and there are still blocks to read
+	{			
+		//read the FAT entries to fill in the read sequence
+		//fread moves the file pointer with it, to read the entries one by one
+		fread(&temp, 4, 1, diskImage);
+		blockNumber++;
+    	temp = ntohl(temp);
+		
+		if (temp == 0x00000000)	//the block is available
+		{
+			//printf("temp = %x, %d, blockNumber = %d\n", temp, temp, blockNumber);
+			readSequence[j] = blockNumber;	//add the block to the array
+			j++;
+			numBlocks2--;	//one less block from the file to read
+		}
+		
+		FATblocksLeft--;	//one less block in the FAT to read
+		//printf("FATblocksLeft = %d, numBlocks2 = %d\n", FATblocksLeft, numBlocks2);
+	}
+
+	//fill the FAT with the information from the read sequence array
+	//reset counters
+	j = 0;	
+	numBlocks2 = numBlocks;
+	//seek to the first available block
+	while(numBlocks2 > 1)
+	{
+		fseek(diskImage, readSequence[j], SEEK_SET);
+		//write to that block where to find the next block
+		m = fwrite(&readSequence[j+1], 4, 1, diskImage);
+		j++;
+		numBlocks2--;
+	}
+	//write the EOF block
+	fseek(diskImage, readSequence[j], SEEK_SET);
+	m = fwrite(&EOFBlock, 4, 1, diskImage);
+
+//add the file info to the directory
+	
 	//find the first available entry in root directory 
-printf("k = %d, SBI[4] = %d, i = %d\n", k, SBI[4], i);
-		//bit 0 is set to 1, this directory entry is in use or we made it to the end of the root directory
     do
     {
     	fseek(diskImage, SBI[4]*blockSize+(64*i), SEEK_SET);
     	fread(&statusRead, 1, 1, diskImage);
-    	printf("in while, statusRead = %d\n", statusRead);
+    	//printf("in while, statusRead = %d\n", statusRead);
     	i++;
     	k--;
-    }while((statusRead & 1) && (k>0));
+    }while((statusRead & 1) && (k>0));	//bit 0 is set to 1, this directory entry is in use or we made it to the end of the root directory
     
-printf("statusRead = %d\n", statusRead);
-	
+   // printf("k = %d, SBI[4] = %d, i = %d\n", k, SBI[4], i);
 
+    
+    fseek(diskImage, -1, SEEK_CUR);
+    //change the status
+    m = fwrite(&status, 1, 1, diskImage);
+    
+    //add the starting block		    
+	readSequence[0] = htonl(readSequence[0]);
+    fwrite(&readSequence[0], 4, 1, diskImage);
+    
+    //add the number of blocks
+    numBlocks = htonl(numBlocks);
+    fwrite(&numBlocks, 4, 1, diskImage);
+    
+    //add the file size (in bytes)
+    fileSize = htonl(fileSize);
+    fwrite(&fileSize, 4, 1, diskImage);
 
-	/*fseek(copyFile, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
-	n = fread(toReadWrite, 1, blockSize, diskImage);	//read the next block of the file
+    //add a create time
+	time(&createTime);
+	info = localtime(&createTime);
+	cYear = info -> tm_year;
+	cYear = cYear + 1900;
+	cYear = htonl(cYear);
+	fwrite(&cYear, 2, 1, diskImage);
 	
-	if(n != 0)
+	cMonth = info -> tm_mon;
+	cMonth = cMonth+1;
+	fwrite(&cMonth, 1, 1, diskImage);
+
+	cDay = info -> tm_mday;
+	fwrite(&cMonth, 1, 1, diskImage);
+
+	cHour = info -> tm_hour;
+	fwrite(&cHour, 1, 1, diskImage);
+
+	cMin = info -> tm_min;
+	fwrite(&cMin, 1, 1, diskImage);
+
+	cSec = info -> tm_sec;
+	fwrite(&cSec, 1, 1, diskImage);
+
+	//add the modify time
+	time(&modTime);
+	info = localtime(&modTime);
+	modYear = info -> tm_year;
+	modYear = modYear + 1900;
+	modYear = htonl(modYear);
+	fwrite(&modYear, 2, 1, diskImage);
+	
+	modMonth = info -> tm_mon;
+	modMonth = modMonth+1;
+	fwrite(&modMonth, 1, 1, diskImage);
+
+	modDay = info -> tm_mday;
+	fwrite(&modDay, 1, 1, diskImage);
+
+	modHour = info -> tm_hour;
+	fwrite(&modHour, 1, 1, diskImage);
+
+	modMin = info -> tm_min;
+	fwrite(&modMin, 1, 1, diskImage);
+
+	modSec = info -> tm_sec;
+	fwrite(&modSec, 1, 1, diskImage);
+
+	//add the filename
+	fwrite(name, 1, 31, diskImage);
+
+	//add the unused space
+	fwrite(&unusedSpace, 1, 6, diskImage);
+ 
+	//add the file to the file system following sequence
+	//go to the start of the file to copy in
+	rewind(copyFile);
+	
+	/*for (i = 0; i<numBlocks; i++)
 	{
-		m = fwrite(toReadWrite, 1, n, copyFile);	//write the next block to the specified file
-	}
-	else
-	{
-		m = 0;
+		fseek(diskImage, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
+		n = fread(toReadWrite, 1, blockSize, copyFile);	//read the next block of the file
+
+		if(n != 0)
+		{
+			m = fwrite(toReadWrite, 1, n, diskImage);	//write the next block to the specified file
+		}
+		else
+		{
+			m = 0;
+		}
 	}*/
+
 }
 
 
@@ -86,7 +224,7 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 	{
 		int numBlocks = allDirEntry[i][1];	//the number of blocks in the file
 		int fileSize = allDirEntry[i][2];	//size of the file in bytes
-		unsigned char toReadWrite[fileSize];	//temp variable to hold bytes as they're read, before they're written
+		unsigned char toReadWrite[blockSize];	//temp variable to hold bytes as they're read, before they're written
 		int bytesLeft = fileSize;	//to keep track of the bytes left to read in the file
 		unsigned int readSequence [numBlocks];	//to store the sequence of blocks in the file system that the file is stored in, this is read from the FAT
 		unsigned int dStartBlock = allDirEntry[i][0];
@@ -236,11 +374,10 @@ void printSuperBlockInfo(int *SBI)
 
 int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 {
-	
-	unsigned int numBlocks, fileSize, tempFN, modYear, dStartBlock;
+	unsigned int numBlocks, fileSize, modYear, dStartBlock;
 	double createTime, unusedSpace;
 	char fileName[31];
-	int i, g;
+	int g;
 	int l = 9;
 	int k = 0;
 	unsigned char statusRead, modMonth, modDay, modHour, modMinute, modSecond;
@@ -286,6 +423,7 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 
 		fread(&dStartBlock, 4, 1, diskImage);		    
 	    dStartBlock = ntohl(dStartBlock);
+	   // printf("startblock = %x, %d\n", dStartBlock, dStartBlock);
 
 		fread(&numBlocks, 4, 1, diskImage);
 	    numBlocks = ntohl(numBlocks);
@@ -309,11 +447,7 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 	    
 	    fread(&modSecond, 1, 1, diskImage);
 
-		for (i = 0; i < 31; i++)
-		{
-			fread(&tempFN, 1, 1, diskImage);
-			fileName[i] = tempFN;
-		}
+		fread(fileName, sizeof(fileName), 1, diskImage);
 		
 		fread(&unusedSpace, 6, 1, diskImage);		
 		allDirEntry[k][0] = dStartBlock;	
@@ -322,6 +456,7 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 		allDirEntry[k][3] = 0;
 		k++;
 	    
+	    //printf("%d, %d, %f, %f\n", dStartBlock, numBlocks, createTime, unusedSpace);
 	    if (flag == 1)	//function called from part 2 so print information
 	    {
 			printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
@@ -353,7 +488,7 @@ int main (int argc, char *argv[])
 	
 	char *name = argv[2];
 
-	diskImage = fopen(argv[1], "rb");	//read the file
+	diskImage = fopen(argv[1], "r+b");	//open the file for reading and writing in binary
 
 	if (diskImage == NULL)
 	{
@@ -410,7 +545,6 @@ int main (int argc, char *argv[])
 	fclose(copyFile);
 
 #elif defined(PART4)
-	name = NULL;
 
 	printf ("Part 4: diskput\n");
 
@@ -422,7 +556,7 @@ int main (int argc, char *argv[])
 		return(-1);
 	}
 
-	writeThatFile(diskImage, copyFile, SBI);
+	writeThatFile(diskImage, copyFile, SBI, name);
 	fclose(copyFile);
 #else
 #	error "PART[1234] must be defined"
