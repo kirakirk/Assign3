@@ -24,7 +24,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	time_t createTime, modTime;
 	struct tm *info;
 	double unusedSpace = 0xFF;
-	unsigned int fileSize, numBlocks, temp, numBlocks2, cYear, modYear;
+	unsigned int fileSize, numBlocks, temp, numBlocks2, cYear, modYear, dStartBlock;
 	unsigned int blockNumber = 0;
 	unsigned int FATblocks = SBI[3];	//number of blocks in the FAT
 	unsigned int EOFBlock = 0xFFFFFFFF;
@@ -33,16 +33,14 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	int i = 0;
 	int k = SBI[5]; //k = number of blocks in the root directory
 	int j = 0;	//to loop through readsequence array
-	//unsigned char toReadWrite[blockSize];
+	unsigned char toReadWrite[blockSize];
 	unsigned char statusRead = 0;
 	unsigned char status = 3;	//we won't be working with directories, so every status will be 11000000
 	char cMonth, cDay, cHour, cMin, cSec, modMonth, modDay, modHour, modMin, modSec;
-	size_t m;//, n;
+	size_t m, n;
 
 	fseek(copyFile, 0, SEEK_END);	//seek to the end of the file
 	fileSize = ftell(copyFile);	 //figure out the size of the file in bytes
-
-	printf("fileSize = %d\n", fileSize);
 	
 	numBlocks = (fileSize + 511)/512;	//file size in blocks
 	numBlocks2 = numBlocks;	//to count down the number of blocks in the file
@@ -58,9 +56,6 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	//move file pointer to the start of the FAT to find first available block
 	fseek(diskImage, (SBI[2]*blockSize), SEEK_SET);
 
-//printf("SBI[2] = %d, blockSize = %d\n", SBI[2], blockSize);
-	
-	
 	while (numBlocks2 > 0 && FATblocksLeft > 0)//we still have blocks in the file left to write and there are still blocks to read
 	{			
 		//read the FAT entries to fill in the read sequence
@@ -71,57 +66,54 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 		
 		if (temp == 0x00000000)	//the block is available
 		{
-			//printf("temp = %x, %d, blockNumber = %d\n", temp, temp, blockNumber);
 			readSequence[j] = blockNumber;	//add the block to the array
 			j++;
 			numBlocks2--;	//one less block from the file to read
 		}
 		
 		FATblocksLeft--;	//one less block in the FAT to read
-		//printf("FATblocksLeft = %d, numBlocks2 = %d\n", FATblocksLeft, numBlocks2);
 	}
 
 	//fill the FAT with the information from the read sequence array
 	//reset counters
 	j = 0;	
 	numBlocks2 = numBlocks;
-	printf("numBlocks2 = %d\n", numBlocks2);
+
 	//seek to the first available block
 	while(numBlocks2 > 1)
 	{
 		fseek(diskImage, ((SBI[2]*blockSize) + (readSequence[j]*4)), SEEK_SET);
-		printf("readSequence[%d] = %d\n", j, readSequence[j]);
 		//write to that block where to find the next block
 		m = fwrite(&readSequence[j+1], 4, 1, diskImage);
+
 		j++;
 		numBlocks2--;
 	}
+	
 	//write the EOF block
 	fseek(diskImage, ((SBI[2]*blockSize) + (readSequence[j]*4)), SEEK_SET);
 	m = fwrite(&EOFBlock, 4, 1, diskImage);
 
 //add the file info to the directory
-	
 	//find the first available entry in root directory 
     do
     {
     	fseek(diskImage, SBI[4]*blockSize+(64*i), SEEK_SET);
     	fread(&statusRead, 1, 1, diskImage);
-    	//printf("in while, statusRead = %d\n", statusRead);
     	i++;
     	k--;
     }while((statusRead & 1) && (k>0));	//bit 0 is set to 1, this directory entry is in use or we made it to the end of the root directory
     
-   // printf("k = %d, SBI[4] = %d, i = %d\n", k, SBI[4], i);
-
+    numBlocks2 = numBlocks;
     
    	fseek(diskImage, -1, SEEK_CUR);
     //change the status
     m = fwrite(&status, 1, 1, diskImage);
     
-    //add the starting block		    
-	readSequence[0] = htonl(readSequence[0]);
-    fwrite(&readSequence[0], 4, 1, diskImage);
+    //add the starting block
+    dStartBlock = readSequence[0];		    
+	dStartBlock = htonl(dStartBlock);
+    fwrite(&dStartBlock, 4, 1, diskImage);
     
     //add the number of blocks
     numBlocks = htonl(numBlocks);
@@ -136,7 +128,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	info = localtime(&createTime);
 	cYear = info -> tm_year;
 	cYear = cYear + 1900;
-	cYear = htonl(cYear);
+	cYear = htons(cYear);
 	fwrite(&cYear, 2, 1, diskImage);
 	
 	cMonth = info -> tm_mon;
@@ -159,7 +151,6 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	time(&modTime);
 	info = localtime(&modTime);
 	
-	//not writing correctly
 	modYear = info -> tm_year;
 	modYear = modYear + 1900;
 	modYear = htons(modYear);
@@ -191,9 +182,8 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	//go to the start of the file to copy in
 	rewind(copyFile);
 	
-	/*for (i = 0; i<numBlocks; i++)
+	for (i = 0; i<numBlocks2; i++)
 	{
-		printf("here\n");
 		fseek(diskImage, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
 		n = fread(toReadWrite, 1, blockSize, copyFile);	//read the next block of the file
 
@@ -205,7 +195,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 		{
 			m = 0;
 		}
-	}*/
+	}
 
 }
 
@@ -213,7 +203,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 {
 	//fread the file from the .img into toReadWrite
-	//fwrite the info from toREadWrite to the file in the root directory specified by copyFile
+	//fwrite the info from toReadWrite to the file in the root directory specified by copyFile
 	size_t n, m;
 	int i = 0;
 	
@@ -239,10 +229,11 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 		//read the block sequence from the FAT into an array
 		while(readSequence[o] != 0xFFFFFFFF && bytesLeft > 0 && o < numBlocks-1)
 		{
-			fseek(diskImage, SBI[2]*blockSize + readSequence[o]*4, SEEK_SET);
+			fseek(diskImage, ((SBI[2]*blockSize) + (readSequence[o]*4)), SEEK_SET);
 			o++;
 			fread(&readSequence[o], 4, 1, diskImage);
-			readSequence[o] = ntohl(readSequence[o]);
+			
+			readSequence[o] = htonl(readSequence[o]);
 			bytesLeft--;
 		}
 
@@ -260,6 +251,7 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 			{
 				m = fwrite(toReadWrite, 1, bytesLeft, copyFile);
 			}
+			
 			bytesLeft = bytesLeft - blockSize;
 		}
 	}
@@ -277,9 +269,6 @@ int *readSuperBlockInfo(FILE *diskImage)
 	int d = 0;
 	int i;
 	static int superBlockInfo[9];	//contains the info read in this function in the order it's read
-	//unsigned ints are 4 bytes
-	//short is 2 bytes
-	//long is 4 bytes
 
 	fseek(diskImage, 8, SEEK_SET);
     
@@ -400,8 +389,6 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 	   
 	    fread(&statusRead, 1, 1, diskImage);
 
-	    //printf("in readDirectory, statusRead = %d\n", statusRead);
-
 		if(!statusRead & 1)	//bit 0 is set to 0, this directory entry is available
 	    {
 			status = 'a';
@@ -409,7 +396,6 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 	    }
 	    else if (statusRead & 1)	//bit 0 is set to 1, this directory entry is in use
 		{
-			//check the use
 			if (statusRead & 2)	//bit 1 is set to 1, this entry is a normal file
 			{
 				status = 'F';
@@ -430,7 +416,6 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 
 		fread(&dStartBlock, 4, 1, diskImage);		    
 	    dStartBlock = ntohl(dStartBlock);
-	   // printf("startblock = %x, %d\n", dStartBlock, dStartBlock);
 
 		fread(&numBlocks, 4, 1, diskImage);
 	    numBlocks = ntohl(numBlocks);
@@ -462,8 +447,7 @@ int **readDirectory(FILE *diskImage, int *SBI, int **allDirEntry, char *name)
 		allDirEntry[k][2] = fileSize;
 		allDirEntry[k][3] = 0;
 		k++;
-	    
-	    //printf("%d, %d, %f, %f\n", dStartBlock, numBlocks, createTime, unusedSpace);
+
 	    if (flag == 1)	//function called from part 2 so print information
 	    {
 			printf("%c %10d %30s %04d/%02d/%02d %02d:%02d:%02d\n", status, fileSize, fileName, modYear, modMonth, modDay, modHour, modMinute, modSecond);
@@ -523,7 +507,6 @@ int main (int argc, char *argv[])
 	flag = 1;
 	copyFile = NULL;
 	printf ("Part 2: disklist\n");
-	printf("here\n");
 	//reads and prints directory information if flag is set
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
 	
@@ -567,8 +550,6 @@ int main (int argc, char *argv[])
 #	error "PART[1234] must be defined"
 #endif
 	fclose(diskImage);
-	
-	//free(SBI);	gives an error...
 	free(allDirEntry);
 	
 	return 0;
