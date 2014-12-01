@@ -24,7 +24,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	time_t createTime, modTime;
 	struct tm *info;
 	double unusedSpace = 0xFF;
-	unsigned int fileSize, numBlocks, temp, numBlocks2, cYear, modYear; 
+	unsigned int fileSize, numBlocks, temp, numBlocks2, cYear, modYear;
 	unsigned int blockNumber = 0;
 	unsigned int FATblocks = SBI[3];	//number of blocks in the FAT
 	unsigned int EOFBlock = 0xFFFFFFFF;
@@ -37,14 +37,14 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	unsigned char statusRead = 0;
 	unsigned char status = 3;	//we won't be working with directories, so every status will be 11000000
 	char cMonth, cDay, cHour, cMin, cSec, modMonth, modDay, modHour, modMin, modSec;
-	size_t m;	//n
+	size_t m;//, n;
 
 	fseek(copyFile, 0, SEEK_END);	//seek to the end of the file
 	fileSize = ftell(copyFile);	 //figure out the size of the file in bytes
 
 	printf("fileSize = %d\n", fileSize);
 	
-	numBlocks = fileSize/512;	//file size in blocks
+	numBlocks = (fileSize + 511)/512;	//file size in blocks
 	numBlocks2 = numBlocks;	//to count down the number of blocks in the file
 	
 	unsigned int readSequence [numBlocks];	//an array to hold the sequence in the FAT
@@ -85,17 +85,19 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	//reset counters
 	j = 0;	
 	numBlocks2 = numBlocks;
+	printf("numBlocks2 = %d\n", numBlocks2);
 	//seek to the first available block
 	while(numBlocks2 > 1)
 	{
-		fseek(diskImage, readSequence[j], SEEK_SET);
+		fseek(diskImage, ((SBI[2]*blockSize) + (readSequence[j]*4)), SEEK_SET);
+		printf("readSequence[%d] = %d\n", j, readSequence[j]);
 		//write to that block where to find the next block
 		m = fwrite(&readSequence[j+1], 4, 1, diskImage);
 		j++;
 		numBlocks2--;
 	}
 	//write the EOF block
-	fseek(diskImage, readSequence[j], SEEK_SET);
+	fseek(diskImage, ((SBI[2]*blockSize) + (readSequence[j]*4)), SEEK_SET);
 	m = fwrite(&EOFBlock, 4, 1, diskImage);
 
 //add the file info to the directory
@@ -113,7 +115,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
    // printf("k = %d, SBI[4] = %d, i = %d\n", k, SBI[4], i);
 
     
-    fseek(diskImage, -1, SEEK_CUR);
+   	fseek(diskImage, -1, SEEK_CUR);
     //change the status
     m = fwrite(&status, 1, 1, diskImage);
     
@@ -156,9 +158,11 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	//add the modify time
 	time(&modTime);
 	info = localtime(&modTime);
+	
+	//not writing correctly
 	modYear = info -> tm_year;
 	modYear = modYear + 1900;
-	modYear = htonl(modYear);
+	modYear = htons(modYear);
 	fwrite(&modYear, 2, 1, diskImage);
 	
 	modMonth = info -> tm_mon;
@@ -178,7 +182,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	fwrite(&modSec, 1, 1, diskImage);
 
 	//add the filename
-	fwrite(name, 1, 31, diskImage);
+	fwrite(name, 1, sizeof(name), diskImage);
 
 	//add the unused space
 	fwrite(&unusedSpace, 1, 6, diskImage);
@@ -189,6 +193,7 @@ void writeThatFile(FILE *diskImage, FILE *copyFile, int *SBI, char *name)
 	
 	/*for (i = 0; i<numBlocks; i++)
 	{
+		printf("here\n");
 		fseek(diskImage, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
 		n = fread(toReadWrite, 1, blockSize, copyFile);	//read the next block of the file
 
@@ -241,19 +246,21 @@ void readThatFile(FILE *diskImage, FILE *copyFile, int **allDirEntry, int *SBI)
 			bytesLeft--;
 		}
 
+		bytesLeft = fileSize;
+
 		for (i = 0; i<numBlocks; i++)
 		{
 			fseek(diskImage, readSequence[i]*blockSize, SEEK_SET);	//move to the next block in the file to be read
 			n = fread(toReadWrite, 1, blockSize, diskImage);	//read the next block of the file
-			
-			if(n != 0)
+			if(n != 0 && bytesLeft>512)
 			{
 				m = fwrite(toReadWrite, 1, n, copyFile);	//write the next block to the specified file
 			}
-			else
+			else if (n !=0 && bytesLeft>0)
 			{
-				m = 0;
+				m = fwrite(toReadWrite, 1, bytesLeft, copyFile);
 			}
+			bytesLeft = bytesLeft - blockSize;
 		}
 	}
 	
@@ -516,7 +523,7 @@ int main (int argc, char *argv[])
 	flag = 1;
 	copyFile = NULL;
 	printf ("Part 2: disklist\n");
-	
+	printf("here\n");
 	//reads and prints directory information if flag is set
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
 	
@@ -524,7 +531,6 @@ int main (int argc, char *argv[])
 	flag = 0;
 	
 	printf ("Part 3: diskget\n");
-	
 	allDirEntry = readDirectory(diskImage, SBI, allDirEntry, name);
 
 	if (flag != 2)
@@ -547,7 +553,6 @@ int main (int argc, char *argv[])
 #elif defined(PART4)
 
 	printf ("Part 4: diskput\n");
-
 	copyFile = fopen(argv[2], "r+b");
 
 	if (copyFile == NULL)
